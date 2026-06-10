@@ -135,18 +135,27 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 ## A Complete Interaction (Step by Step)
 
-Write out what a full user interaction looks like from start to finish — tool call by tool call. Use a specific example query.
+Initially, the user requests an item description. FitFindr finds a piece that fits this description and triggers a recommendation engine to suggest an outfit with that piece. After a combination is chosen, it generates a shareable social media fit card. If it can't find an item in `search_listings()`, it handles the error by terminating the loop early (preventing subsequent tool calls later) and providing an informative message.
 
 **Example user query:** "I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
+The agent parses the user's request and identifies constraints for the item the user wants (`query="vintage graphic tee"`, `max_price=30`). It calls the first tool: `search_listings(query="vintage graphic tee", max_price=30)`. 
+
+Note: If this tool returns an empty list or fails, the loop terminates here (early), sets an error message in the session state, and prevents subsequent tool calls from running.
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
+Assuming Step 1 successfully finds an item, it returns a listing dictionary (e.g., `{"title": "90s Vintage Harley Davidson Tee", "price": 25, "size": "L"}`). The agent saves this to the session state under `selected_item`. It then automatically triggers the recommendation engine by calling `suggest_outfit(item={"title": "90s Vintage Harley Davidson Tee", "price": 25, "size": "L"}, wardrobe_style="baggy jeans and chunky sneakers")` (waedrobe style constraints are from the intiall user request)
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
+The `suggest_outfit` tool returns a structured outfit combination string or dictionary incorporating the selected tee with the user's wardrobe style. The agent saves this to the session state under `outfit_suggestion`. Finally, it triggers the last tool by calling `create_fit_card(outfit_suggestion="...")` to format the clothing combination into a social  presentation.
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
+The user sees the final formatted results in the UI panels, containing:
+1. The matching secondhand item details found within their budget.
+2. The recommended styling advice incorporating their existing wardrobe items.
+3. A formatted, shareable social media "fit card" text summary ready to post.
