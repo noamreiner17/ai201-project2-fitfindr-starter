@@ -77,7 +77,7 @@ This tool takes an outfit suggestion and the selected new item, and uses an LLM 
 <!-- List each parameter, its type, and what it represents -->
 - `outfit` (str): The outfit suggestion string returned by `suggest_outfit`.
 
-- `new_item` (dict): The selected listing dictionary (same schema as Tool 1), used to pull in specific details like price, platform, and item title for the caption.
+- `new_item` (dict): The selected listing dictionary (same schema as Tool 1), used to pull in specific details like price, platform, and item title for the caption. 
 
 
 **What it returns:**
@@ -197,7 +197,6 @@ Planning Loop
               (selected_item + outfit_suggestion + fit_card all populated)
 ```
 
-
 ## AI Tool Plan
 
 <!-- For each part of the implementation below, describe:
@@ -222,7 +221,6 @@ For `create_fit_card`: I'll give Claude the Tool 3 spec block and ask it to impl
 **Milestone 4 — Planning loop and state management:**
 
 I'll give Claude the full ## Architecture diagram and both the ## Planning Loop and ## State Management sections from this file, and ask it to implement `run_agent()` in `agent.py`. Before running, I'll review the generated code and check three things: (1) it branches on `search_listings` returning an empty list; (2) it stores values in the `session` dict between steps rather than passing them as local variables; (3) it does not call all three tools unconditionally regardless of earlier results. I'll then run a happy-path query and print `session["selected_item"]` to confirm it matches what `suggest_outfit` received. I'll also run an impossible query to confirm `session["error"]` is set and `session["fit_card"]` is `None`.
-
 
 ---
 

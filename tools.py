@@ -69,8 +69,40 @@ def search_listings(
 
     Before writing code, fill in the Tool 1 section of planning.md.
     """
-    # Replace this with your implementation
-    return []
+    listings = load_listings()
+
+    # Break the description into lowercase keywords for matching.
+    keywords = [w for w in description.lower().split() if w]
+
+    results = []
+    for listing in listings:
+        # Filter by price ceiling (inclusive).
+        if max_price is not None and listing["price"] > max_price:
+            continue
+
+        # Filter by size (case-insensitive substring match).
+        if size is not None:
+            if size.lower() not in listing["size"].lower():
+                continue
+
+        # Score by keyword overlap against title, description, and style_tags.
+        haystack = " ".join([
+            listing["title"],
+            listing["description"],
+            " ".join(listing["style_tags"]),
+        ]).lower()
+
+        score = sum(1 for kw in keywords if kw in haystack)
+
+        # Drop listings with no keyword matches.
+        if score == 0:
+            continue
+
+        results.append((score, listing))
+
+    # Sort by score (highest first), then by price (lowest first) to break ties.
+    results.sort(key=lambda r: (-r[0], r[1]["price"]))
+    return [listing for score, listing in results]
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -100,8 +132,58 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
+
+    # Compact summary of the thrifted item for the prompt.
+    item_summary = (
+        f"{new_item['title']} "
+        f"(colors: {', '.join(new_item.get('colors', []))}; "
+        f"style: {', '.join(new_item.get('style_tags', []))})"
+    )
+
+    items = wardrobe.get("items", [])
+
+    if not items:
+        # Empty wardrobe -> general styling advice based on the item alone.
+        prompt = (
+            f"A user is considering buying this secondhand item: {item_summary}.\n"
+            "They have not listed any wardrobe items yet. Suggest general styling "
+            "ideas for this one piece: what kinds of items pair well with it, what vibe "
+            "it suits, and how to wear it. Keep it to 2-3 sentences."
+        )
+    else:
+        # Format the wardrobe so the LLM can reference pieces by name.
+        wardrobe_lines = []
+        for w in items:
+            wardrobe_lines.append(
+                f"- {w['name']} ({w['category']}; "
+                f"colors: {', '.join(w.get('colors', []))}; "
+                f"style: {', '.join(w.get('style_tags', []))})"
+            )
+        wardrobe_text = "\n".join(wardrobe_lines)
+
+        prompt = (
+            f"A user is adding this secondhand item to their wardrobe: {item_summary}.\n\n"
+            f"Their existing wardrobe:\n{wardrobe_text}\n\n"
+            "Suggest 1-2 complete outfit combinations pairing the new item with "
+            "specific pieces from their wardrobe (refer to pieces by name). "
+            "Reason about color compatibility and overall aesthetic. "
+            "Keep it to 2-4 sentences."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a personal stylist who gives concise, practical outfit advice.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.7,
+    )
+
+    return response.choices[0].message.content.strip()
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
