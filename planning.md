@@ -17,22 +17,25 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
-This tool takes the agent's parses information of the user query as parameters and find an item or more from the 'listing.json', that fits those parameters.
+This tool parses the user query into structured parameters and searches `listings.json` for items that match. It returns a ranked list of matching listing dictionaries sorted by relevance (closeness of description match, then ascending price).
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `description` (str): the discription of the item the user is intrested of purchasing (Noam double check)
-- `size` (str): the size of the item the user is intrested of purchasing
-- `max_price` (float): The maximum price the user is willing to pay for that item. 
+- `description` (str): A plain-language description of the item the user wants (e.g. `"vintage graphic tee"`). Used to match against the `title`, `description`, and `style_tags` fields in the listings data.
+
+- `size` (str): The clothing size the user needs (e.g. `"M"`, `"Oversized"`, `"US 7"`).
+
+- `max_price` (float): The maximum price the user is willing to pay. Only listings with `price <= max_price` are returned.
+
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
-If sucesseful, this tool wil return a list ('results') of a possible items (Noam add type - prob item ID) that fall into the cratiria above.
+A list of listing dictionaries (type: `list[dict]`). Each dictionary contains all fields from `listings.json` for that item: `id` (str), `title` (str), `description` (str), `category` (str), `style_tags` (list[str]), `size` (str), `condition` (str), `price` (float), `colors` (list[str]), `brand` (str), and `platform` (str). Returns an empty list `[]` if no listings match the parameters.
+
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-
-If the tool fails (meaning it didn't find an item that fits the paramaters above), it should stop the loop, and notify the user's that it was unable to find an item that fits their paramaters.
+If the returned list is empty, the planning loop sets `session["error"]` to a message explaining what filters were applied and what the user could adjust (e.g. "No listings found for 'vintage graphic tee' in size M under $30. Try removing the size filter or increasing your budget."). The loop returns early and does not call `suggest_outfit` or `create_fit_card`.
 ---
 
 ### Tool 2: suggest_outfit
@@ -40,28 +43,26 @@ If the tool fails (meaning it didn't find an item that fits the paramaters above
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
 
-This tool takes the first item from the selected items (the result for the search_listings tool), and match it with the current waredrobe the user has 'wardrobe_schema.json'
+This tool takes the selected thrifted item and the user's existing wardrobe and uses an LLM to suggest one or more outfit combinations. It reasons about style, color compatibility, and aesthetic to pair the new item with pieces the user already owns.
 
-Noam - check if the information from the qurey can also be pharse into the waredrobe
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `new_item` (dict): Selected thrifting items that fits the user's paramaters.
-- `wardrobe` (dict): Clothes the user already own.
+- `new_item` (dict): The listing dictionary selected from `search_listings` results (same schema as above: `id`, `title`, `price`, `size`, `colors`, `style_tags`, etc.).
 
-Noam write how each item loocks like. 
+- `wardrobe` (dict): The user's wardrobe loaded from `wardrobe_schema.json`. Contains a key `"items"` (list[dict]), where each wardrobe item has: `id` (str), `name` (str), `category` (str, one of: tops/bottoms/outerwear/shoes/accessories), `colors` (list[str]), `style_tags` (list[str]), and `notes` (str | None).
+
 
 **What it returns:**
 <!-- Describe the return value -->
 
-It returns pairs of item that can be styled togther
+A non-empty string (`str`) describing one or more complete outfit combinations. Example: `"Pair the Harley Davidson tee with your wide-leg black jeans and chunky white sneakers for a 90s grunge look. Tuck the front corner of the tee slightly for shape."` If the wardrobe is empty, returns general styling advice for the new item based on its style tags alone.
 
-Noam be more presise on return type 
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the wardrobe is empty or no outfit can be suggested? -->
 
-If the wardrobe is empty/no outfit can be suggested, the user will be prompt with a massage that no outfit suggestion can be made. The loop will be stoped
+If `wardrobe["items"]` is empty, the tool does not crash — it falls back to LLM-generated general styling advice for the item (e.g. "This tee pairs well with wide-leg jeans and chunky sneakers based on its vintage style tags."). The loop stores this fallback string in `session["outfit_suggestion"]` and continues to `create_fit_card`. If the LLM call itself fails, `session["error"]` is set to an informative message and the loop returns early.
 
 ---
 
@@ -70,20 +71,23 @@ If the wardrobe is empty/no outfit can be suggested, the user will be prompt wit
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
 
-This tool takes the outfit suggestions from suggest outfit tool, and format the clothing combination into a social presentation.
+This tool takes an outfit suggestion and the selected new item, and uses an LLM to generate a short, shareable social media caption — the kind of thing someone would post with an outfit photo on Instagram or TikTok.
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `outfit` (...): ...  Noam tuple? a pair of 2 items (dict: based on the json formating), teh thrifted and from the waredrobe. 
+- `outfit` (str): The outfit suggestion string returned by `suggest_outfit`.
+
+- `new_item` (dict): The selected listing dictionary (same schema as Tool 1), used to pull in specific details like price, platform, and item title for the caption.
+
 
 **What it returns:**
 <!-- Describe the return value -->
-This returns a fit card - a social media post description ready of the outfit of the 2 items. 
+A short string (`str`) of 1–3 sentences formatted as a casual social media caption. Example: `"thrifted this faded harley tee off depop for $22 and it was made for my wide-legs 🖤 full look in my stories"`. The output should vary meaningfully for different inputs — if two calls return identical text, the LLM temperature should be increased.
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the outfit data is incomplete? -->
 
-If the outfit data is incomplete, the tool should prompt the user with no fit post avaiable. 
+If `outfit` is an empty string or `None`, the tool returns a descriptive error string (e.g. `"Could not generate a fit card: outfit suggestion was missing."`) rather than raising an exception. The planning loop stores this message in `session["fit_card"]` so the UI can display it informatively.
 
 ---
 ### Additional Tools (if any)
@@ -96,21 +100,18 @@ If the outfit data is incomplete, the tool should prompt the user with no fit po
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
 ---
+The planning loop runs sequentially through three tool calls. At each step it checks the result before proceeding. Here is the exact conditional logic:
 
-search_listings:
+**Step 1 — `search_listings`:**
+Call `search_listings(description, size, max_price)` with parameters parsed from the user query. Check if `results` is an empty list. If yes: set `session["error"] = "No listings found for [params]. Try loosening your filters."` and return the session early — do not call `suggest_outfit` or `create_fit_card`. If no: set `session["selected_item"] = results[0]` (the top-ranked match) and proceed to Step 2.
 
-Starts runing after reciving the phrased paramaters from the suer query. Once it's done, it produce 'results' (Noam add type).
-If result is empty, set an error message in the session and return early. Else return the result.
+**Step 2 — `suggest_outfit`:**
+Call `suggest_outfit(new_item=session["selected_item"], wardrobe=wardrobe)`. If the LLM call raises an exception: set `session["error"]` with an informative message and return early. If the call succeeds (including the empty-wardrobe fallback path): set `session["outfit_suggestion"] = result` and proceed to Step 3.
 
-at this stage, set selected_item = results[0] and proceed to suggest_outfit.
+**Step 3 — `create_fit_card`:**
+Call `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"])`. If `outfit` is empty or `None`: set `session["fit_card"]` to the error string returned by the tool and return the session. If the call succeeds: set `session["fit_card"] = result` and return the completed session.
 
-suggest_outfit:
-
-After running suggest_outfit with the the selected item, and wardrobe. If wardobe is empty, set an error message in the session and return early. Else, return the outfit_suggestion described above (do noam)
-
-create_fit_card:
-
-After running creat_fit_card with outfit_suggestion from the suggest_outfit. If the outfit_suggestion is null (or empty), set an error message stating that a outfit segggestion can not be made therefore not a fit_card. else, return a fit card as describe above. 
+The loop does not re-prompt the user or retry automatically. Each tool is called at most once per session. The agent only moves forward — it never loops back to an earlier tool.
 
 
 ## State Management
@@ -119,6 +120,16 @@ After running creat_fit_card with outfit_suggestion from the suggest_outfit. If 
 <!-- Describe how your agent stores and accesses state within a session. What data is tracked? How is it passed between tool calls? -->
 
 
+All state is stored in a single `session` dictionary that is created at the start of `run_agent()` and passed through each step. The following keys are written during execution:
+
+| Key | Type | Set when | Used by |
+|-----|------|----------|---------|
+| `session["selected_item"]` | `dict` | After `search_listings` succeeds | `suggest_outfit`, `create_fit_card` |
+| `session["outfit_suggestion"]` | `str` | After `suggest_outfit` succeeds | `create_fit_card` |
+| `session["fit_card"]` | `str` | After `create_fit_card` completes | Returned to UI |
+| `session["error"]` | `str` | When any tool triggers an early exit | Returned to UI |
+
+No tool reads from the session directly — each tool receives its inputs as explicit function arguments. The planning loop is responsible for reading from the session and passing values forward. This keeps tools independently testable with hardcoded inputs.
 
 ---
 ## Error Handling
@@ -127,9 +138,10 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | |
-| suggest_outfit | Wardrobe is empty | |
-| create_fit_card | Outfit input is missing or incomplete | |
+| `search_listings` | No listings match the query parameters | Sets `session["error"]` to: `"No listings found for '[description]' in size [size] under $[max_price]. Try increasing your budget or removing the size filter."` Returns the session early without calling the remaining tools. |
+| `suggest_outfit` | `wardrobe["items"]` is empty | Falls back to LLM-generated general styling advice based on the new item's `style_tags` alone. Stores the fallback string in `session["outfit_suggestion"]` and continues to `create_fit_card` — this is not a fatal error. |
+| `create_fit_card` | `outfit` argument is an empty string or `None` | Returns a descriptive error string: `"Could not generate a fit card: outfit suggestion was missing."` The planning loop stores this in `session["fit_card"]` so the UI panel shows the message rather than crashing. |
+
 
 ---
 
@@ -146,6 +158,46 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 ---
 
+```
+User query
+    │
+    ▼
+Planning Loop
+    │
+    ├─► search_listings(description, size, max_price)
+    │       │
+    │       ├── results == [] ──► session["error"] = "No listings found..." ──► return session (early)
+    │       │
+    │       └── results != []
+    │               │
+    │           session["selected_item"] = results[0]
+    │               │
+    ├─► suggest_outfit(new_item=selected_item, wardrobe=wardrobe)
+    │       │
+    │       ├── wardrobe["items"] == [] ──► fallback: general styling advice (not a fatal error)
+    │       │                                   │
+    │       │                               session["outfit_suggestion"] = fallback_string
+    │       │                                   │
+    │       ├── LLM call fails ──► session["error"] = "Outfit suggestion failed..." ──► return session (early)
+    │       │
+    │       └── success
+    │               │
+    │           session["outfit_suggestion"] = result
+    │               │
+    └─► create_fit_card(outfit=outfit_suggestion, new_item=selected_item)
+            │
+            ├── outfit is empty/None ──► session["fit_card"] = "Could not generate fit card..."
+            │
+            └── success
+                    │
+                session["fit_card"] = result
+                    │
+                    ▼
+              Return session
+              (selected_item + outfit_suggestion + fit_card all populated)
+```
+
+
 ## AI Tool Plan
 
 <!-- For each part of the implementation below, describe:
@@ -161,7 +213,16 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 **Milestone 3 — Individual tool implementations:**
 
+For `search_listings`: I'll give Claude the Tool 1 spec block from this file (input parameters, return value, failure mode) and ask it to implement the function using `load_listings()` from `utils/data_loader.py`. Before running the generated code, I'll verify it filters by all three parameters (`description`, `size`, `max_price`) and returns `[]` rather than raising an exception when nothing matches. I'll test it with three queries: one that should return results, one with an impossible size + price combo that should return `[]`, and one with `size=None` to confirm size filtering is skipped correctly.
+
+For `suggest_outfit`: I'll give Claude the Tool 2 spec block and the `wardrobe_schema.json` structure, and ask it to implement the function using the Groq API (`llama-3.3-70b-versatile`). Before running, I'll check that the generated code handles the empty-wardrobe case without crashing. I'll test it with `get_example_wardrobe()` (should return styled advice) and `get_empty_wardrobe()` (should return fallback general advice, not an exception or empty string).
+
+For `create_fit_card`: I'll give Claude the Tool 3 spec block and ask it to implement the function using the Groq API. Before running, I'll check that it guards against an empty `outfit` string. I'll run it three times on the same input and confirm the outputs differ — if they're identical, I'll ask Claude to increase the `temperature` parameter.
+
 **Milestone 4 — Planning loop and state management:**
+
+I'll give Claude the full ## Architecture diagram and both the ## Planning Loop and ## State Management sections from this file, and ask it to implement `run_agent()` in `agent.py`. Before running, I'll review the generated code and check three things: (1) it branches on `search_listings` returning an empty list; (2) it stores values in the `session` dict between steps rather than passing them as local variables; (3) it does not call all three tools unconditionally regardless of earlier results. I'll then run a happy-path query and print `session["selected_item"]` to confirm it matches what `suggest_outfit` received. I'll also run an impossible query to confirm `session["error"]` is set and `session["fit_card"]` is `None`.
+
 
 ---
 
@@ -173,21 +234,22 @@ Initially, the user requests an item description. FitFindr finds a piece that fi
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
-The agent parses the user's request and identifies constraints for the item the user wants (`query="vintage graphic tee"`, `max_price=30`). It calls the first tool: `search_listings(query="vintage graphic tee", max_price=30)`. 
+The agent parses the user's request and identifies constraints for the item the user wants (`description="vintage graphic tee"`, `size=None`, `max_price=30.0`). It calls the first tool: `search_listings(description="vintage graphic tee", size=None, max_price=30.0)`. 
 
-Note: If this tool returns an empty list or fails, the loop terminates here (early), sets an error message in the session state, and prevents subsequent tool calls from running.
+Note: If this tool returns an empty list, the loop terminates here (early), sets `session["error"] = "No listings found for 'vintage graphic tee' under $30. Try increasing your budget."` in the session state, and prevents subsequent tool calls from running.
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
-Assuming Step 1 successfully finds an item, it returns a listing dictionary (e.g., Noam maybe it should be ID instead `{"title": "90s Vintage Harley Davidson Tee", "price": 25, "size": "L"}`). The agent saves this to the session state under `selected_item`. It then automatically triggers the recommendation engine by calling `suggest_outfit(item={"title": "90s Vintage Harley Davidson Tee", "price": 25, "size": "L"}, wardrobe_style="baggy jeans and chunky sneakers")` (wardrobe style constraints are from the intiall user request)
+Assuming Step 1 successfully finds items, it returns a list of matching listing dictionaries. The top result might be: `{"id": "listing_042", "title": "90s Vintage Harley Davidson Tee", "price": 25.0, "size": "L", "colors": ["black", "orange"], "style_tags": ["vintage", "graphic", "band tee"], "platform": "Depop", "condition": "Good"}`. The agent saves `results[0]` to `session["selected_item"]` and calls `suggest_outfit(new_item=session["selected_item"], wardrobe=get_example_wardrobe())`. The wardrobe passed in contains items like `{"id": "w_001", "name": "Baggy straight-leg jeans, dark wash", "category": "bottoms", "colors": ["dark blue", "indigo"], "style_tags": ["denim", "streetwear", "baggy"], "notes": "High-waisted, sits above the hip"}` and `{"id": "w_007", "name": "Chunky white sneakers", "category": "shoes", "colors": ["white"], "style_tags": ["sneakers", "chunky", "streetwear"], "notes": null}` — the LLM reasons over all 10 items to pick the best combination with the new tee.
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
-The `suggest_outfit` tool returns a structured outfit combination string or dictionary incorporating the selected tee with the user's wardrobe style. The agent saves this to the session state under `outfit_suggestion`. Finally, it triggers the last tool by calling `create_fit_card(outfit_suggestion="...")` to format the clothing combination into a social  presentation.
+The `suggest_outfit` tool returns a string such as: `"Pair this tee with your wide-leg black jeans and chunky white sneakers for a classic 90s grunge look. Roll the sleeves once and tuck the front corner slightly for shape."`. The agent saves this to `session["outfit_suggestion"]` and calls `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"])`.
+
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
 The user sees the final formatted results in the UI panels, containing:
-1. The matching secondhand item details found within their budget.
+1. The matching secondhand item details found within their budget (title, price, platform, condition, size).
 2. The recommended styling advice incorporating their existing wardrobe items.
 3. A formatted, shareable social media "fit card" text summary ready to post.
