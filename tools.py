@@ -107,7 +107,7 @@ def search_listings(
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
 
-def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
+def suggest_outfit(new_item: dict, wardrobe: dict) -> tuple[bool, str]:
     """
     Given a thrifted item and the user's wardrobe, suggest 1–2 complete outfits.
 
@@ -117,9 +117,13 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
                   wardrobe item dicts. May be empty — handle this gracefully.
 
     Returns:
-        A non-empty string with outfit suggestions.
-        If the wardrobe is empty, offer general styling advice for the item
-        rather than raising an exception or returning an empty string.
+        A tuple (is_fallback, text):
+        - is_fallback (bool): True if the wardrobe was empty and `text` is
+          general styling advice; False if `text` references the user's
+          actual wardrobe pieces.
+        - text (str): a non-empty string with outfit suggestions. If the
+          wardrobe is empty, this is general styling advice rather than an
+          exception or an empty string.
 
     TODO:
         1. Check whether wardrobe['items'] is empty.
@@ -142,6 +146,7 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
     )
 
     items = wardrobe.get("items", [])
+    empty_wardrobe = True
 
     if not items:
         # Empty wardrobe -> general styling advice based on the item alone.
@@ -170,6 +175,7 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
             "Reason about color compatibility and overall aesthetic. "
             "Keep it to 2-4 sentences."
         )
+        empty_wardrobe = False
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -183,7 +189,7 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
         temperature=0.7,
     )
 
-    return response.choices[0].message.content.strip()
+    return (empty_wardrobe, response.choices[0].message.content.strip())
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────

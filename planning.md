@@ -56,7 +56,11 @@ This tool takes the selected thrifted item and the user's existing wardrobe and 
 **What it returns:**
 <!-- Describe the return value -->
 
-A non-empty string (`str`) describing one or more complete outfit combinations. Example: `"Pair the Harley Davidson tee with your wide-leg black jeans and chunky white sneakers for a 90s grunge look. Tuck the front corner of the tee slightly for shape."` If the wardrobe is empty, returns general styling advice for the new item based on its style tags alone.
+A tuple `(is_fallback, text)`:
+- `is_fallback` (`bool`): `True` when the wardrobe was empty and `text` is general styling advice; `False` when `text` references the user's actual wardrobe pieces. Mainly used for testing. 
+- `text` (`str`): a non-empty string describing one or more complete outfit combinations. Example: `"Pair the Harley Davidson tee with your wide-leg black jeans and chunky white sneakers for a 90s grunge look. Tuck the front corner of the tee slightly for shape."` If the wardrobe is empty, `text` is general styling advice for the new item based on its style tags alone.
+
+The planning loop unpacks the tuple and passes only `text` forward (to `session["outfit_suggestion"]` and to `create_fit_card`), while `is_fallback` can be used to flag in the UI that the suggestion is generic rather than wardrobe-specific.
 
 
 **What happens if it fails or returns nothing:**
@@ -106,7 +110,7 @@ The planning loop runs sequentially through three tool calls. At each step it ch
 Call `search_listings(description, size, max_price)` with parameters parsed from the user query. Check if `results` is an empty list. If yes: set `session["error"] = "No listings found for [params]. Try loosening your filters."` and return the session early — do not call `suggest_outfit` or `create_fit_card`. If no: set `session["selected_item"] = results[0]` (the top-ranked match) and proceed to Step 2.
 
 **Step 2 — `suggest_outfit`:**
-Call `suggest_outfit(new_item=session["selected_item"], wardrobe=wardrobe)`. If the LLM call raises an exception: set `session["error"]` with an informative message and return early. If the call succeeds (including the empty-wardrobe fallback path): set `session["outfit_suggestion"] = result` and proceed to Step 3.
+Call `suggest_outfit(new_item=session["selected_item"], wardrobe=wardrobe)`, which returns a tuple `(is_fallback, text)`. If the LLM call raises an exception: set `session["error"]` with an informative message and return early. If the call succeeds (including the empty-wardrobe fallback path): unpack the tuple, set `session["outfit_suggestion"] = text` (and optionally store `is_fallback` for the UI), then proceed to Step 3.
 
 **Step 3 — `create_fit_card`:**
 Call `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"])`. If `outfit` is empty or `None`: set `session["fit_card"]` to the error string returned by the tool and return the session. If the call succeeds: set `session["fit_card"] = result` and return the completed session.

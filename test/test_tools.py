@@ -44,62 +44,39 @@ new_item = {
 wardrobe = get_example_wardrobe()
 wardrobe_empty = get_empty_wardrobe()
 
-def test_suggest_outfit_returns_string():
+def test_suggest_outfit_returns_tuple():
     suggestion = suggest_outfit(new_item, wardrobe)
-    assert isinstance(suggestion, str)
-    assert len(suggestion) > 0
+    assert isinstance(suggestion, tuple)
+    assert len(suggestion) == 2
+    assert isinstance(suggestion[0], bool)
+    assert isinstance(suggestion[1], str)
+
+def test_suggest_outfit_full_wardrobe():
+    suggestion = suggest_outfit(new_item, wardrobe)
+    assert suggestion[0] is False      
+    assert isinstance(suggestion[1], str)
+    assert len(suggestion[1]) > 0
 
 def test_suggest_outfit_no_wardrobe():
     suggestion = suggest_outfit(new_item, wardrobe_empty)
-    assert isinstance(suggestion, str)
-    assert len(suggestion) > 0
+    assert suggestion[0] is True
+    assert isinstance(suggestion[1], str)
+    assert len(suggestion[1]) > 0
 
-
-"""
-Right — you want to test the empty-wardrobe branch vs the full-wardrobe branch and actually see what each returns. Here's how.
-
-The test
-
-from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
-
-def test_suggest_outfit_empty_wardrobe():
-    empty = get_empty_wardrobe()
-    result = suggest_outfit(new_item, empty)
-    # Should NOT crash and should NOT be empty, even with no wardrobe items
-    assert isinstance(result, str)
-    assert len(result) > 0
-    print("\n[EMPTY WARDROBE]\n", result)
-
-def test_suggest_outfit_full_wardrobe():
-    full = get_example_wardrobe()
-    result = suggest_outfit(new_item, full)
-    assert isinstance(result, str)
-    assert len(result) > 0
-    print("\n[FULL WARDROBE]\n", result)
-How to actually SEE the responses
-By default pytest hides print() output for passing tests. Add the -s flag to see it:
-
-
-python -m pytest test/test_tools.py -v -s
-That prints both responses so you can eyeball that:
-
-the empty one gives general advice (no named wardrobe pieces — it can't reference items it doesn't have)
-the full one names specific pieces from the example wardrobe
-Optional: assert the difference automatically
-If you want the test itself to prove the two branches behave differently (not just print them):
-
-
-def test_empty_vs_full_differ():
-    general = suggest_outfit(new_item, get_empty_wardrobe())
-    specific = suggest_outfit(new_item, get_example_wardrobe())
-
-    # The two branches should produce different advice
-    assert general != specific
-
-    # The full-wardrobe response should mention at least one real wardrobe item
-    wardrobe_names = [w["name"] for w in get_example_wardrobe()["items"]]
-    # check a distinctive word from any wardrobe item appears in the specific output
-    assert any(name.split()[0].lower() in specific.lower() for name in wardrobe_names)
-That last assertion is a bit strict (the LLM might paraphrase a name), so if it flakes, drop it and rely on general != specific plus the printed output for your own review.
-
-My suggestion: start with the two print-based tests + -s so you can read the responses yourself — that's the "test it and review the output" discipline your milestone is asking for. Want me to add these to your file?"""
+def test_suggest_outfit_varies_by_item():
+    other_item = {
+        "id": "test999",
+        "title": "Black leather biker jacket",
+        "description": "Edgy black leather jacket with silver hardware.",
+        "category": "outerwear",
+        "style_tags": ["edgy", "punk", "streetwear"],
+        "size": "M",
+        "condition": "good",
+        "price": 80.00,
+        "colors": ["black"],
+        "brand": "RiderCo",
+        "platform": "depop",
+    }
+    _, text_a = suggest_outfit(new_item, wardrobe)
+    _, text_b = suggest_outfit(other_item, wardrobe)
+    assert text_a != text_b
