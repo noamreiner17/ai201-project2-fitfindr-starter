@@ -40,7 +40,7 @@ def search_listings(
     description: str,
     size: str | None = None,
     max_price: float | None = None,
-) -> list[dict]:
+) -> tuple[list[dict], str]:
     """
     Search the mock listings dataset for items matching the description,
     optional size, and optional price ceiling.
@@ -53,8 +53,12 @@ def search_listings(
         max_price:   Maximum price (inclusive), or None to skip price filtering.
 
     Returns:
-        A list of matching listing dicts, sorted by relevance (best match first).
-        Returns an empty list if nothing matches — does NOT raise an exception.
+        A tuple (results, message):
+        - results (list[dict]): matching listing dicts, sorted by relevance
+          (best match first). Empty list if nothing matches.
+        - message (str): empty string on success; on no match, a specific,
+          informative message naming the filters applied and what to adjust.
+        Never raises an exception for a no-match case.
 
     Each listing dict has the following fields:
         id, title, description, category, style_tags (list), size,
@@ -102,7 +106,14 @@ def search_listings(
 
     # Sort by score (highest first), then by price (lowest first) to break ties.
     results.sort(key=lambda r: (-r[0], r[1]["price"]))
-    return [listing for score, listing in results]
+    matches = [listing for score, listing in results]
+
+    if not matches:
+        # Build a specific, informative no-match message naming the filters used.
+        message = ("No listings found for your search criteria.")
+        return ([], message)
+    
+    return (matches, "")
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -221,5 +232,36 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    # Guard against a missing or whitespace-only outfit suggestion.
+    if not outfit or not outfit.strip():
+        return "Could not generate a fit card: outfit suggestion was missing."
+
+    client = _get_groq_client()
+
+    prompt = (
+        f"Write a casual, authentic Instagram/TikTok-style caption for an outfit "
+        f"post about a thrifted find.\n\n"
+        f"Item: {new_item.get('title', 'this piece')}\n"
+        f"Price: ${new_item.get('price', '?')}\n"
+        f"Platform: {new_item.get('platform', 'a resale app')}\n"
+        f"Outfit: {outfit}\n\n"
+        "Guidelines:\n"
+        "- 1-3 sentences, sounds like a real OOTD post (not a product description).\n"
+        "- Mention the item name, price, and platform naturally, once each.\n"
+        "- Capture the outfit vibe in specific terms.\n"
+        "Return only the caption text."
+    )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": "You write fun, authentic social media outfit captions.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=1.0,
+    )
+
+    return response.choices[0].message.content.strip()

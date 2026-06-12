@@ -30,12 +30,16 @@ This tool parses the user query into structured parameters and searches `listing
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
-A list of listing dictionaries (type: `list[dict]`). Each dictionary contains all fields from `listings.json` for that item: `id` (str), `title` (str), `description` (str), `category` (str), `style_tags` (list[str]), `size` (str), `condition` (str), `price` (float), `colors` (list[str]), `brand` (str), and `platform` (str). Returns an empty list `[]` if no listings match the parameters.
+A tuple `(results, message)`:
+- `results` (`list[dict]`): the matching listing dictionaries, sorted by relevance (best match first). Each dictionary contains all fields from `listings.json` for that item: `id` (str), `title` (str), `description` (str), `category` (str), `style_tags` (list[str]), `size` (str), `condition` (str), `price` (float), `colors` (list[str]), `brand` (str), and `platform` (str). Empty list `[]` if no listings match.
+- `message` (`str`): empty string `""` on success; on no match, a specific, informative message naming the filters that were applied and what the user could adjust (e.g. `"No listings found for 'vintage graphic tee' in size M under $30. Try increasing your budget or removing the size filter."`).
+
+The planning loop unpacks the tuple, uses `results` to decide whether to proceed, and stores `message` in `session["error"]` when `results` is empty.
 
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-If the returned list is empty, the planning loop sets `session["error"]` to a message explaining what filters were applied and what the user could adjust (e.g. "No listings found for 'vintage graphic tee' in size M under $30. Try removing the size filter or increasing your budget."). The loop returns early and does not call `suggest_outfit` or `create_fit_card`.
+The tool itself builds the informative no-match message (it never raises an exception and never returns nothing — it returns `([], message)`). When `results` is empty, the planning loop copies that `message` into `session["error"]`, returns early, and does not call `suggest_outfit` or `create_fit_card`.
 ---
 
 ### Tool 2: suggest_outfit
@@ -107,7 +111,7 @@ If `outfit` is an empty string or `None`, the tool returns a descriptive error s
 The planning loop runs sequentially through three tool calls. At each step it checks the result before proceeding. Here is the exact conditional logic:
 
 **Step 1 — `search_listings`:**
-Call `search_listings(description, size, max_price)` with parameters parsed from the user query. Check if `results` is an empty list. If yes: set `session["error"] = "No listings found for [params]. Try loosening your filters."` and return the session early — do not call `suggest_outfit` or `create_fit_card`. If no: set `session["selected_item"] = results[0]` (the top-ranked match) and proceed to Step 2.
+Call `search_listings(description, size, max_price)` with parameters parsed from the user query; it returns a tuple `(results, message)`. Check if `results` is an empty list. If yes: set `session["error"] = message` (the tool's own informative no-match message) and return the session early — do not call `suggest_outfit` or `create_fit_card`. If no: set `session["selected_item"] = results[0]` (the top-ranked match) and proceed to Step 2.
 
 **Step 2 — `suggest_outfit`:**
 Call `suggest_outfit(new_item=session["selected_item"], wardrobe=wardrobe)`, which returns a tuple `(is_fallback, text)`. If the LLM call raises an exception: set `session["error"]` with an informative message and return early. If the call succeeds (including the empty-wardrobe fallback path): unpack the tuple, set `session["outfit_suggestion"] = text` (and optionally store `is_fallback` for the UI), then proceed to Step 3.
