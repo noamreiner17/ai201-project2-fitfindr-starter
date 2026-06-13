@@ -262,7 +262,7 @@ def create_fit_card(outfit: str, new_item: dict, is_general: bool = False) -> st
             "- Mention the item name, price, and platform naturally, once each.\n"
             "- Hype the piece itself. Do NOT claim the user wore or owns any other "
             "specific clothing — they have no wardrobe yet. Frame any styling as "
-            "future ideas (e.g. \"can't wait to style it with…\"), not as an outfit "
+            "future ideas (e.g. \"can't wait to buy <items that work with the item> to style it with…\"), not as an outfit "
             "they put together.\n"
             "Return only the caption text."
         )
