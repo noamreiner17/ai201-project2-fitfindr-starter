@@ -205,13 +205,19 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> tuple[bool, str]:
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
 
-def create_fit_card(outfit: str, new_item: dict) -> str:
+def create_fit_card(outfit: str, new_item: dict, is_general: bool = False) -> str:
     """
     Generate a short, shareable outfit caption for the thrifted find.
 
     Args:
-        outfit:   The outfit suggestion string from suggest_outfit().
-        new_item: The listing dict for the thrifted item.
+        outfit:     The outfit suggestion string from suggest_outfit().
+        new_item:   The listing dict for the thrifted item.
+        is_general: True when `outfit` is generic styling advice (the user has
+                    no wardrobe yet) rather than a real outfit built from owned
+                    pieces. When True, the caption must NOT claim the user wore
+                    or owns specific items — it hypes the thrifted find itself
+                    and frames any styling as ideas ("can't wait to style it
+                    with…"), so it doesn't hallucinate a wardrobe.
 
     Returns:
         A 2–4 sentence string usable as an Instagram/TikTok caption.
@@ -238,19 +244,39 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     client = _get_groq_client()
 
-    prompt = (
-        f"Write a casual, authentic Instagram/TikTok-style caption for an outfit "
-        f"post about a thrifted find.\n\n"
+    item_block = (
         f"Item: {new_item.get('title', 'this piece')}\n"
         f"Price: ${new_item.get('price', '?')}\n"
         f"Platform: {new_item.get('platform', 'a resale app')}\n"
-        f"Outfit: {outfit}\n\n"
-        "Guidelines:\n"
-        "- 1-3 sentences, sounds like a real OOTD post (not a product description).\n"
-        "- Mention the item name, price, and platform naturally, once each.\n"
-        "- Capture the outfit vibe in specific terms.\n"
-        "Return only the caption text."
+        f"Styling notes: {outfit}\n\n"
     )
+
+    if is_general:
+        # No real wardrobe -> don't claim the user wore/owns specific pieces.
+        prompt = (
+            "Write a casual, authentic Instagram/TikTok-style caption for a "
+            "thrifted find the user just bought.\n\n"
+            + item_block
+            + "Guidelines:\n"
+            "- 1-3 sentences, sounds like a real post (not a product description).\n"
+            "- Mention the item name, price, and platform naturally, once each.\n"
+            "- Hype the piece itself. Do NOT claim the user wore or owns any other "
+            "specific clothing — they have no wardrobe yet. Frame any styling as "
+            "future ideas (e.g. \"can't wait to style it with…\"), not as an outfit "
+            "they put together.\n"
+            "Return only the caption text."
+        )
+    else:
+        prompt = (
+            "Write a casual, authentic Instagram/TikTok-style caption for an outfit "
+            "post about a thrifted find.\n\n"
+            + item_block
+            + "Guidelines:\n"
+            "- 1-3 sentences, sounds like a real OOTD post (not a product description).\n"
+            "- Mention the item name, price, and platform naturally, once each.\n"
+            "- Capture the outfit vibe in specific terms.\n"
+            "Return only the caption text."
+        )
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",

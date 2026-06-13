@@ -110,3 +110,10 @@ def test_create_fit_card_varies_by_input():
     caption_a = create_fit_card(outfit_text, new_item)
     caption_b = create_fit_card(other_outfit, new_item)
     assert caption_a != caption_b
+
+def test_create_fit_card_general_returns_caption():
+    # is_general=True (empty-wardrobe path) still returns a non-empty caption.
+    general_advice = "This dress pairs well with sneakers or boots for a casual spring vibe."
+    caption = create_fit_card(general_advice, new_item, is_general=True)
+    assert isinstance(caption, str)
+    assert len(caption) > 0

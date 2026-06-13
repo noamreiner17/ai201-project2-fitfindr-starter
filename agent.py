@@ -18,48 +18,62 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
-import re
+import json
 
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, _get_groq_client
 
 
 # ── query parsing ──────────────────────────────────────────────────────────────
 
 def _parse_query(query: str) -> dict:
     """
-    Extract structured search parameters from a natural-language query.
+    Extract structured search parameters from a natural-language query using
+    an LLM (Groq llama-3.3-70b-versatile in JSON mode).
 
-    Uses simple regex/string matching (no LLM call) so parsing is deterministic
-    and testable:
-      - max_price: the number after a '$' or after the word "under" (e.g.
-        "under $30", "under 30" -> 30.0).
-      - size: the token after the word "size" (e.g. "size M" -> "M").
-      - description: the whole query with the price/size phrases stripped out,
-        used for keyword matching in search_listings.
+    The model returns a JSON object with:
+      - description (str): the item keywords, with size/price phrases removed.
+      - size (str | null): the requested size, or null if none was mentioned.
+      - max_price (number | null): the price ceiling, or null if none given.
 
-    Returns a dict with keys: description, size, max_price.
+    Returns a dict with keys: description, size, max_price. If the LLM call or
+    JSON parse fails, falls back to using the raw query as the description with
+    no size/price filters (so search can still run).
     """
-    text = query.strip()
+    client = _get_groq_client()
 
-    # max_price: "$30", "under 30", "under $30.50"
-    max_price = None
-    price_match = re.search(r"(?:under\s+)?\$?\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
-    if price_match:
-        max_price = float(price_match.group(1))
+    prompt = (
+        "Extract structured search parameters from this secondhand-clothing query.\n"
+        f'Query: "{query}"\n\n'
+        "Return ONLY a JSON object with exactly these keys:\n"
+        '- "description": string of item keywords with any size/price wording removed\n'
+        '- "size": the requested size as a string, or null if none mentioned\n'
+        '- "max_price": the price ceiling as a number, or null if none mentioned\n'
+    )
 
-    # size: the word after "size"
-    size = None
-    size_match = re.search(r"size\s+([A-Za-z0-9]+)", text, re.IGNORECASE)
-    if size_match:
-        size = size_match.group(1)
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You extract structured search filters and reply with JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        data = json.loads(response.choices[0].message.content)
 
-    # description: strip the price and size phrases so they don't pollute keywords
-    description = re.sub(r"under\s+\$?\s*\d+(?:\.\d+)?", "", text, flags=re.IGNORECASE)
-    description = re.sub(r"\$\s*\d+(?:\.\d+)?", "", description)
-    description = re.sub(r"size\s+[A-Za-z0-9]+", "", description, flags=re.IGNORECASE)
-    # strip leftover punctuation/whitespace at the edges and collapse spaces
-    description = re.sub(r"\s+", " ", description)
-    description = description.strip(" ,.;:-")
+        description = (data.get("description") or query).strip()
+        size = data.get("size")
+        max_price = data.get("max_price")
+        # Normalize types: size -> str|None, max_price -> float|None.
+        size = str(size) if size else None
+        max_price = float(max_price) if max_price is not None else None
+    except Exception:
+        # Fallback: search on the raw query with no size/price filters.
+        description, size, max_price = query.strip(), None, None
 
     return {"description": description, "size": size, "max_price": max_price}
 
@@ -159,16 +173,19 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     session["selected_item"] = results[0]
 
     # Step 5: Suggest an outfit. suggest_outfit returns (is_fallback, text).
+    # is_fallback is True when the wardrobe was empty and the advice is generic.
     is_fallback, outfit_text = suggest_outfit(
         new_item=session["selected_item"],
         wardrobe=wardrobe,
     )
     session["outfit_suggestion"] = outfit_text
 
-    # Step 6: Generate the shareable fit card from the outfit text.
+    # Step 6: Generate the shareable fit card. Pass is_fallback so the caption
+    # doesn't claim the user owns/wore pieces when they have no wardrobe.
     session["fit_card"] = create_fit_card(
         outfit=outfit_text,
         new_item=session["selected_item"],
+        is_general=is_fallback,
     )
 
     # Step 7: Return the completed session.

@@ -87,6 +87,8 @@ This tool takes an outfit suggestion and the selected new item, and uses an LLM 
 
 - `new_item` (dict): The selected listing dictionary (same schema as Tool 1), used to pull in specific details like price, platform, and item title for the caption. 
 
+- `is_general` (bool, default `False`): `True` when `outfit` is generic styling advice because the user has no wardrobe yet (i.e. `suggest_outfit` returned `is_fallback=True`). When `True`, the caption must **not** claim the user wore or owns specific pieces — it hypes the thrifted find itself and frames styling as future ideas ("can't wait to style it with…"), preventing the fit card from hallucinating a wardrobe the user doesn't have. The planning loop passes `is_general=is_fallback` from `suggest_outfit`.
+
 
 **What it returns:**
 <!-- Describe the return value -->
@@ -108,7 +110,7 @@ If `outfit` is an empty string or `None`, the tool returns a descriptive error s
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
 ---
-Before the tool calls, the loop **parses the query** into `description`, `size`, and `max_price`. This is done with simple regex/string matching (no LLM call) so it stays deterministic and testable: `max_price` is the number after `$` or after the word "under"; `size` is the token after the word "size"; `description` is the remaining text with those phrases stripped out. The parsed dict is stored in `session["parsed"]`.
+Before the tool calls, the loop **parses the query** into `description`, `size`, and `max_price` using an LLM (Groq `llama-3.3-70b-versatile` in JSON mode, `temperature=0.0`). The model returns a JSON object: `description` (item keywords with size/price wording removed), `size` (string or null), and `max_price` (number or null). The loop normalizes the types (`size` → `str | None`, `max_price` → `float | None`) and stores the parsed dict in `session["parsed"]`.
 
 The planning loop then runs sequentially through three tool calls. At each step it checks the result before proceeding. Here is the exact conditional logic:
 
@@ -119,7 +121,7 @@ Call `search_listings(description, size, max_price)` with parameters parsed from
 Call `suggest_outfit(new_item=session["selected_item"], wardrobe=wardrobe)`, which returns a tuple `(is_fallback, text)`. If the LLM call raises an exception: set `session["error"]` with an informative message and return early. If the call succeeds (including the empty-wardrobe fallback path): unpack the tuple, set `session["outfit_suggestion"] = text` (and optionally store `is_fallback` for the UI), then proceed to Step 3.
 
 **Step 3 — `create_fit_card`:**
-Call `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"])`. If `outfit` is empty or `None`: set `session["fit_card"]` to the error string returned by the tool and return the session. If the call succeeds: set `session["fit_card"] = result` and return the completed session.
+Call `create_fit_card(outfit=session["outfit_suggestion"], new_item=session["selected_item"], is_general=is_fallback)`, passing the `is_fallback` value from Step 2 so the caption avoids claiming the user owns pieces when the wardrobe was empty. If `outfit` is empty or `None`: set `session["fit_card"]` to the error string returned by the tool and return the session. If the call succeeds: set `session["fit_card"] = result` and return the completed session.
 
 The loop does not re-prompt the user or retry automatically. Each tool is called at most once per session. The agent only moves forward — it never loops back to an earlier tool.
 
