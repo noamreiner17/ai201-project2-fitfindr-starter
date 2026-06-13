@@ -214,4 +214,11 @@ if __name__ == "__main__":
         query="designer ballgown size XXS under $5",
         wardrobe=get_example_wardrobe(),
     )
-    print(f"Error message: {session2['error']}")
+    if session2["error"]:
+        print(f"Error: {session2['error']}")
+        print(f"\nFit card: {session2['fit_card']}")
+
+    else:
+        print(f"Found: {session2['selected_item']['title']}")
+        print(f"\nOutfit: {session2['outfit_suggestion']}")
+        print(f"\nFit card: {session2['fit_card']}")
