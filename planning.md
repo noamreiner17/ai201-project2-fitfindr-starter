@@ -108,7 +108,9 @@ If `outfit` is an empty string or `None`, the tool returns a descriptive error s
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
 ---
-The planning loop runs sequentially through three tool calls. At each step it checks the result before proceeding. Here is the exact conditional logic:
+Before the tool calls, the loop **parses the query** into `description`, `size`, and `max_price`. This is done with simple regex/string matching (no LLM call) so it stays deterministic and testable: `max_price` is the number after `$` or after the word "under"; `size` is the token after the word "size"; `description` is the remaining text with those phrases stripped out. The parsed dict is stored in `session["parsed"]`.
+
+The planning loop then runs sequentially through three tool calls. At each step it checks the result before proceeding. Here is the exact conditional logic:
 
 **Step 1 — `search_listings`:**
 Call `search_listings(description, size, max_price)` with parameters parsed from the user query; it returns a tuple `(results, message)`. Check if `results` is an empty list. If yes: set `session["error"] = message` (the tool's own informative no-match message) and return the session early — do not call `suggest_outfit` or `create_fit_card`. If no: set `session["selected_item"] = results[0]` (the top-ranked match) and proceed to Step 2.
