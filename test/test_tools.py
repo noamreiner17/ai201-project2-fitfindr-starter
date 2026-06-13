@@ -17,7 +17,11 @@ def test_search_empty_results():
     results, message = search_listings("sequined astronaut gown", size="XXS", max_price=2)
     assert results == []# empty list, no exception
     assert isinstance(message, str) and len(message) > 0
-    assert message == "No listings found for your search criteria."
+    # message names the failed filters and suggests what to adjust
+    assert "sequined astronaut gown" in message
+    assert "size XXS" in message
+    assert "$2" in message
+    assert "Try" in message
 
 def test_search_price_filter():
     results, message = search_listings("shirt", size=None, max_price=20)

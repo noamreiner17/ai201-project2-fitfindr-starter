@@ -195,7 +195,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 # ── CLI test ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
+    from utils.data_loader import get_example_wardrobe
 
     print("=== Happy path: graphic tee ===\n")
     session = run_agent(
@@ -222,3 +222,5 @@ if __name__ == "__main__":
         print(f"Found: {session2['selected_item']['title']}")
         print(f"\nOutfit: {session2['outfit_suggestion']}")
         print(f"\nFit card: {session2['fit_card']}")
+
+

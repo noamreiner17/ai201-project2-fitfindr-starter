@@ -109,8 +109,17 @@ def search_listings(
     matches = [listing for score, listing in results]
 
     if not matches:
-        # Build a specific, informative no-match message naming the filters used.
-        message = ("No listings found for your search criteria.")
+        # Build a specific, informative no-match message naming the filters used
+        # and what the user could adjust.
+        filters = [f"'{description}'"]
+        if size is not None:
+            filters.append(f"in size {size}")
+        if max_price is not None:
+            filters.append(f"under ${max_price}")
+        message = (
+            f"No listings found for {' '.join(filters)}. "
+            "Try increasing your budget or removing the size filter."
+        )
         return ([], message)
     
     return (matches, "")

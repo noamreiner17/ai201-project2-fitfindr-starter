@@ -32,14 +32,14 @@ This tool parses the user query into structured parameters and searches `listing
 <!-- Describe the return value — what fields does a result contain? -->
 A tuple `(results, message)`:
 - `results` (`list[dict]`): the matching listing dictionaries, sorted by relevance (best match first). Each dictionary contains all fields from `listings.json` for that item: `id` (str), `title` (str), `description` (str), `category` (str), `style_tags` (list[str]), `size` (str), `condition` (str), `price` (float), `colors` (list[str]), `brand` (str), and `platform` (str). Empty list `[]` if no listings match.
-- `message` (`str`): empty string `""` on success; on no match, a short informative message (e.g. `"No listings found for your search criteria."`).
+- `message` (`str`): empty string `""` on success; on no match, a specific, informative message naming the filters that were applied and what the user could adjust (e.g. `"No listings found for 'designer ballgown' in size XXS under $5. Try increasing your budget or removing the size filter."`).
 
 The planning loop unpacks the tuple, uses `results` to decide whether to proceed, and stores `message` in `session["error"]` when `results` is empty.
 
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-The tool itself returns a short no-match message (it never raises an exception and never returns nothing — it returns `([], message)`). When `results` is empty, the planning loop copies that `message` into `session["error"]`, returns early, and does not call `suggest_outfit` or `create_fit_card`.
+The tool itself builds the informative no-match message — naming the filters applied and what to adjust (it never raises an exception and never returns nothing — it returns `([], message)`). When `results` is empty, the planning loop copies that `message` into `session["error"]`, returns early, and does not call `suggest_outfit` or `create_fit_card`.
 ---
 
 ### Tool 2: suggest_outfit
@@ -150,7 +150,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| `search_listings` | No listings match the query parameters | Sets `session["error"]` to the tool's no-match message: `"No listings found for your search criteria."` Returns the session early without calling the remaining tools. |
+| `search_listings` | No listings match the query parameters | Sets `session["error"]` to the tool's no-match message: `"No listings found for '[description]' in size [size] under $[max_price]. Try increasing your budget or removing the size filter."` Returns the session early without calling the remaining tools. |
 | `suggest_outfit` | `wardrobe["items"]` is empty | Falls back to LLM-generated general styling advice based on the new item's `style_tags` alone. Stores the fallback string in `session["outfit_suggestion"]` and continues to `create_fit_card` — this is not a fatal error. |
 | `create_fit_card` | `outfit` argument is an empty string or `None` | Returns a descriptive error string: `"Could not generate a fit card: outfit suggestion was missing."` The planning loop stores this in `session["fit_card"]` so the UI panel shows the message rather than crashing. |
 
@@ -246,7 +246,7 @@ Initially, the user requests an item description. FitFindr finds a piece that fi
 <!-- What does the agent do first? Which tool is called? With what input? -->
 The agent parses the user's request and identifies constraints for the item the user wants (`description="vintage graphic tee"`, `size=None`, `max_price=30.0`). It calls the first tool: `search_listings(description="vintage graphic tee", size=None, max_price=30.0)`. 
 
-Note: If this tool returns an empty list, the loop terminates here (early), sets `session["error"] = "No listings found for your search criteria."` in the session state, and prevents subsequent tool calls from running.
+Note: If this tool returns an empty list, the loop terminates here (early), sets `session["error"] = "No listings found for 'vintage graphic tee' under $30. Try increasing your budget or removing the size filter."` in the session state, and prevents subsequent tool calls from running.
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
