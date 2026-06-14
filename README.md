@@ -42,50 +42,60 @@ The agent has three tools, all in [tools.py](tools.py). Each is a standalone fun
 
 ### 1. `search_listings`
 
-| **Purpose** | Find listings in the mock dataset that match the user's description, within an optional size and price ceiling, ranked by relevance. |
-| **Inputs** | `description: str` — keywords describing the wanted item.<br>`size: str \| None` — size filter (case-insensitive substring match against each listing's `size`); `None` skips size filtering.<br>`max_price: float \| None` — inclusive price ceiling; `None` skips price filtering. |
-| **Output** | `tuple[list[dict], str]` — `(results, message)`. `results` is the matching listing dicts (each with `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, `platform`), sorted by keyword-overlap score (desc) then price (asc). `message` is `""` on success, or an informative no-match message when `results` is `[]`. |
+**Purpose** : Find listings in the mock dataset that match the user's description, within an optional size and price ceiling, ranked by relevance. 
+
+**Inputs** : `description: str` — keywords describing the wanted item.`size: str\None` — size filter (case-insensitive substring match against each listing's `size`); `None` skips size filtering.`max_price: float\ None` — inclusive price ceiling; `None` skips price filtering. 
+
+
+**Output** : `tuple[list[dict], str]` — `(results, message)`. `results` is the matching listing dicts (each with `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, `platform`), sorted by keyword-overlap score (desc) then price (asc). `message` is `""` on success, or an informative no-match message when `results` is `[]`.
 
 It scores each listing by how many query keywords appear in the combined `title` + `description` + `style_tags` text, drops zero-score listings, and sorts by score then price. It **never raises** on a no-match, instead it returns `([], message)`.
 
 ### 2. `suggest_outfit`
 
-| | |
-| **Purpose** | Use an LLM to pair the selected thrifted item with pieces from the user's wardrobe (or give general styling advice if the wardrobe is empty). |
-| **Inputs** | `new_item: dict` — the selected listing dict.<br>`wardrobe: dict` — wardrobe with an `"items"` list (each item has `id`, `name`, `category`, `colors`, `style_tags`, `notes`). |
-| **Output** | `tuple[bool, str]` — `(is_fallback, text)`. `is_fallback` is `True` when the wardrobe was empty and `text` is generic advice; `False` when `text` references the user's actual pieces by name. `text` is always a non-empty styling string. |
+
+**Purpose** : Use an LLM to pair the selected thrifted item with pieces from the user's wardrobe (or give general styling advice if the wardrobe is empty). 
+
+**Inputs** : `new_item: dict` — the selected listing dict. `wardrobe: dict` — wardrobe with an `"items"` list (each item has `id`, `name`, `category`, `colors`, `style_tags`, `notes`). 
+
+**Output** : `tuple[bool, str]` — `(is_fallback, text)`. `is_fallback` is `True` when the wardrobe was empty and `text` is generic advice; `False` when `text` references the user's actual pieces by name. `text` is always a non-empty styling string. 
 
 Model: Groq `llama-3.3-70b-versatile`, `temperature=0.7`. When `wardrobe["items"]` is empty it prompts for general styling ideas instead of crashing; otherwise it formats the named wardrobe pieces into the prompt and asks for 1–2 specific combinations.
 
 ### 3. `create_fit_card`
 
-| | |
-|---|---|
-| **Purpose** | Use an LLM to turn the outfit suggestion + item details into a short, casual, shareable social-media caption. |
-| **Inputs** | `outfit: str` — the suggestion text from `suggest_outfit`.<br>`new_item: dict` — the selected listing dict (for title, price, platform).<br>`is_general: bool = False` — when `True`, the caption must not claim the user owns/wore other pieces; it hypes the find and frames styling as future ideas. The loop passes `is_general=is_fallback`. |
-| **Output** | `str` — a 1–3 sentence caption. If `outfit` is empty/whitespace, returns a descriptive error string instead of raising. |
+
+**Purpose** : Use an LLM to turn the outfit suggestion + item details into a short, casual, shareable social-media caption. 
+
+**Inputs** : `outfit: str` — the suggestion text from `suggest_outfit` `new_item: dict` — the selected listing dict (for title, price, platform).`is_general: bool = False` — when `True`, the caption must not claim the user owns/wore other pieces; it hypes the find and frames styling as future ideas. The loop passes `is_general=is_fallback`. 
+
+**Output** : `str` — a 1–3 sentence caption. If `outfit` is empty/whitespace, returns a descriptive error string instead of raising. 
 
 Model: Groq `llama-3.3-70b-versatile`, `temperature=1.0` (high, so repeated calls vary).
 
-There is also a non-tool helper, `_parse_query` in [agent.py](agent.py), which the loop uses before any tool — see below.
+There is also a non-tool helper, `_parse_query` in [agent.py](agent.py), which the loop uses before any tool - see below.
 
 ---
 
 ## The Planning Loop
 
-The loop lives in `run_agent()` in [agent.py](agent.py). It is **sequential with early exits** — not an unconditional pipeline. Here's what it decides at each point and *why*, not just what it calls.
+The loop lives in `run_agent()` in [agent.py](agent.py). It is **sequential with early exits** - not an unconditional pipeline. Here's what it decides at each point and *why*, not just what it calls.
 
-**Step 0 — Parse the query (`_parse_query`).** Before any tool runs, the loop converts the free-text query into structured parameters using the LLM in JSON mode (`temperature=0.0`). The model returns `{description, size, max_price}` with size/price wording stripped out of the description. Types are normalized (`size → str | None`, `max_price → float | None`). **Decision made here:** if the LLM call or JSON parse fails, the loop doesn't abort — it falls back to using the raw query as the description with no size/price filters, so search can still run. The parsed dict is stored in `session["parsed"]`.
+**Step 0 - Parse the query (`_parse_query`).** Before any tool runs, the loop converts the free-text query into structured parameters using the LLM in JSON mode (`temperature=0.0`). The model returns `{description, size, max_price}` with size/price wording stripped out of the description. Types are normalized (`size → str | None`, `max_price → float | None`). 
 
-**Step 1 — Search (`search_listings`).** Calls the tool with the parsed parameters. **Decision:** look at whether `results` is empty.
+**Why?** if the LLM call or JSON parse fails, the loop doesn't abort — it falls back to using the raw query as the description with no size/price filters, so search can still run. The parsed dict is stored in `session["parsed"]`.
+
+**Step 1 - Search (`search_listings`).** Calls the tool with the parsed parameters. **Decision:** look at whether `results` is empty.
 - Empty → copy the tool's own no-match `message` into `session["error"]` and **return immediately**. The agent does *not* call `suggest_outfit` or `create_fit_card`, because there's nothing to style. This is the key non-happy-path branch.
 - Non-empty → select `results[0]` (highest-scoring, cheapest tie-break) as `session["selected_item"]` and continue.
 
-**Step 2 — Suggest outfit (`suggest_outfit`).** Called with the selected item and the wardrobe. **Decision:** the tool itself decides between two paths based on whether the wardrobe has items — a real wardrobe-specific suggestion, or a generic fallback. Either way it returns `(is_fallback, text)`. The empty-wardrobe case is **not** treated as an error; the loop stores `text` and carries `is_fallback` forward so the next step can adjust its tone.
+**Step 2 - Suggest outfit (`suggest_outfit`).** Called with the selected item and the wardrobe. The tool itself decides between two paths based on whether the wardrobe has items — a real wardrobe-specific suggestion, or a generic fallback. Either way it returns `(is_fallback, text)`. The empty-wardrobe case is **not** treated as an error, (any one, with a wardrobe and not, can buy clotes!). The loop stores `text` and carries `is_fallback` forward so the next step can adjust its tone.
 
-**Step 3 — Create fit card (`create_fit_card`).** Called with the outfit text, the selected item, and `is_general=is_fallback`. Passing `is_fallback` through is a deliberate decision: it prevents the caption from hallucinating a wardrobe the user doesn't have. The result is stored in `session["fit_card"]`.
+**Step 3 - Create fit card (`create_fit_card`).** Called with the outfit text, the selected item, and `is_general=is_fallback`. Passing `is_fallback` through is a deliberate decision: it prevents the caption from hallucinating a wardrobe the user doesn't have. The result is stored in `session["fit_card"]`.
 
-**Termination.** The loop is strictly forward-only. Each tool runs **at most once** per session; the loop never retries, never re-prompts, and never loops back to an earlier tool. It is "done" when it has either returned early with an error or populated all three output fields.
+**Termination.** The loop is strictly forward-only. Each tool runs **at most once** per session - the loop never retries, never re-prompts, and never loops back to an earlier tool. It is "done" when it has either returned early with an error or populated all three output fields.
+
+This diagram shows the main flow; for the more detailed tool-level diagram (including each tool's internal error branches), see the diagram in [planning.md](planning.md).
 
 ```
 User query
@@ -102,7 +112,7 @@ search_listings(description, size, max_price)
                               │
                               ▼
                       suggest_outfit(selected_item, wardrobe)  ──► (is_fallback, text)
-                              │   (empty wardrobe → generic advice, NOT an error)
+                              │   (empty wardrobe → advice on the item only, NOT an error)
                               ▼
                       session["outfit_suggestion"] = text
                               │
@@ -164,9 +174,8 @@ The loop sets `session["error"]` to that message and returns immediately. `sugge
 
 A few places where the implementation matched the plan, and a few where building it sharpened the spec:
 
-- **The `(results, message)` tuple was the right call.** Putting the no-match message inside `search_listings` (rather than having the loop invent one) kept the loop's branch logic trivial — `if not results: session["error"] = message` — and meant the message could name the exact filters applied. The plan called for this and it held up.
-- **`is_fallback` had to be plumbed all the way to the fit card.** The plan originally treated the empty-wardrobe case as just a `suggest_outfit` concern. In practice the *fit card* was the part that hallucinated — it would write "paired it with my black jeans" for a user who owns nothing. Threading `is_general=is_fallback` into `create_fit_card` was the fix, and the spec was updated to make that the explicit contract.
-- **Query parsing needed a fallback path.** The plan assumed the LLM JSON parse would succeed. Wrapping it in a try/except that degrades to "search the raw query with no filters" means a flaky parse downgrades result quality instead of breaking the whole run — a more honest failure mode than crashing.
+- **Returning tuples instead of a single value was the right call.** Both `search_listings` (`(results, message)`) and `suggest_outfit` (`(is_fallback, text)`) return the main payload *plus* a second piece of context the loop needs to make a decision — the no-match message and the empty-wardrobe flag. Bundling that context into the return rather than having the loop re-derive it kept the branch logic trivial (`if not results: session["error"] = message`) and let the signal flow forward: `is_fallback` reaches `create_fit_card` so the caption doesn't hallucinate a wardrobe the user doesn't own. It also made the tools far easier to test — a unit test can assert on both elements of the tuple directly (e.g. that a no-match returns `[]` *and* a message naming the filters) without mocking the loop or the session.
+- **The single-`session`-dict state design worked exactly as planned.** The plan called for one `session` dict threaded through the loop, with tools receiving explicit arguments rather than reading state themselves. That separation held up with no changes: the loop maps cleanly onto the planning.md diagram step for step, each tool stayed independently testable with hardcoded inputs, and adding the early-exit branch was a one-line `return session` because all output fields already lived in one place. This was the part of the spec I was least sure about up front and it needed zero rework.
 - **What I'd add next:** `search_listings` selects only `results[0]`. The richer behavior would be to surface the top few and let the user pick before styling — the session already stores the full `search_results` list, so the state model supports it without changes.
 
 ---
@@ -175,6 +184,13 @@ A few places where the implementation matched the plan, and a few where building
 
 I used Claude to help implement parts of this project. Two specific instances:
 
-**1. Implementing `search_listings`.** I gave Claude the Tool 1 spec block from [planning.md](planning.md) (the input parameters, the `(results, message)` return contract, and the no-match failure mode) plus the `load_listings()` signature from the data loader. It produced a working keyword-overlap scorer. **What I changed:** its first version did a strict equality size match (`listing["size"] == size`), which missed listings stored as `"S/M"` when the user asked for `"M"`. I overrode it to a case-insensitive substring match (`size.lower() in listing["size"].lower()`) so combined-size listings still match. I also tightened the tie-break to sort by price ascending after score, which the spec required but the draft omitted.
+**1. Implementing `search_listings`.** I gave Claude the Tool 1 spec block from [planning.md](planning.md) (the input parameters, the `(results, message)` return contract, and the no-match failure mode) plus the `load_listings()` signature from the data loader. It produced a working keyword-overlap scorer.
 
-**2. Implementing the planning loop in `run_agent`.** I gave Claude the Architecture diagram and the Planning Loop + State Management sections from planning.md and asked it to fill in `run_agent()`. It produced the sequential structure correctly. **What I changed:** the draft called all three tools and only checked for an empty result at the very end, which defeats the point of the early exit (it still sent an empty item into the LLM tools). I rewrote it to branch immediately after `search_listings` and `return session` before any LLM call, matching the diagram's early-exit arrow. I also had it stop returning a bare suggestion string from `suggest_outfit` and instead unpack the `(is_fallback, text)` tuple so the fallback flag could reach the fit card.
+**What I changed:** its first version did a strict equality size match (`listing["size"] == size`), which missed listings stored as `"S/M"` when the user asked for `"M"`. I overrode it to a case-insensitive substring match (`size.lower() in listing["size"].lower()`) so combined-size listings still match. I also tightened the tie-break to sort by price ascending after score, which the spec required but the draft omitted.
+
+
+**2. Implementing the planning loop in `run_agent`.** I gave Claude the Architecture diagram and the Planning Loop + State Management sections from planning.md and asked it to fill in `run_agent()`. It produced the sequential structure correctly.
+
+**What I changed:** the draft called all three tools and only checked for an empty result at the very end, which defeats the point of the early exit (it still sent an empty item into the LLM tools). I rewrote it to branch immediately after `search_listings` and `return session` before any LLM call, matching the diagram's early-exit arrow. 
+I also had it stop returning a bare suggestion string from `suggest_outfit` and instead unpack the `(is_fallback, text)` tuple so the fallback flag could reach the fit card (and produce a more accurate respone (as described above))
+

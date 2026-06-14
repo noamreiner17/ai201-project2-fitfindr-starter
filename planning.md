@@ -174,6 +174,11 @@ For each tool, describe the specific failure mode you're handling and what the a
 User query
     │
     ▼
+_parse_query (LLM, JSON, temp=0)  ──fail──► fall back to raw query, no size/price filters
+    │                                            │
+    │  session["parsed"] = {description, size, max_price}
+    │
+    ▼
 Planning Loop
     │
     ├─► search_listings(description, size, max_price)
