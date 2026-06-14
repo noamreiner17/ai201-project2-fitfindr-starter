@@ -38,13 +38,13 @@ python agent.py      # runs a happy-path query and a no-results query
 
 ## Tool Inventory
 
-The agent has three tools, all in [tools.py](tools.py). Each is a standalone function that can be tested (and tested in  [test_tools.py](test_tools.py))in isolation with hardcoded inputs.
+The agent has three tools, all in [tools.py](tools.py). Each is a standalone function that can be tested in isolation (and is tested in [test_tools.py](test/test_tools.py)) with hardcoded inputs.
 
 ### 1. `search_listings`
 
 **Purpose** : Find listings in the mock dataset that match the user's description, within an optional size and price ceiling, ranked by relevance. 
 
-**Inputs** : `description: str` — keywords describing the wanted item.`size: str\None` — size filter (case-insensitive substring match against each listing's `size`); `None` skips size filtering.`max_price: float\ None` — inclusive price ceiling; `None` skips price filtering. 
+**Inputs** : `description: str` — keywords describing the wanted item.`size: str | None` — size filter (case-insensitive substring match against each listing's `size`); `None` skips size filtering. `max_price: float | None` — inclusive price ceiling; `None` skips price filtering.
 
 
 **Output** : `tuple[list[dict], str]` — `(results, message)`. `results` is the matching listing dicts (each with `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, `platform`), sorted by keyword-overlap score (desc) then price (asc). `message` is `""` on success, or an informative no-match message when `results` is `[]`.
@@ -89,7 +89,7 @@ The loop lives in `run_agent()` in [agent.py](agent.py). It is **sequential with
 - Empty → copy the tool's own no-match `message` into `session["error"]` and **return immediately**. The agent does *not* call `suggest_outfit` or `create_fit_card`, because there's nothing to style. This is the key non-happy-path branch.
 - Non-empty → select `results[0]` (highest-scoring, cheapest tie-break) as `session["selected_item"]` and continue.
 
-**Step 2 - Suggest outfit (`suggest_outfit`).** Called with the selected item and the wardrobe. The tool itself decides between two paths based on whether the wardrobe has items — a real wardrobe-specific suggestion, or a generic fallback. Either way it returns `(is_fallback, text)`. The empty-wardrobe case is **not** treated as an error, (any one, with a wardrobe and not, can buy clotes!). The loop stores `text` and carries `is_fallback` forward so the next step can adjust its tone.
+**Step 2 - Suggest outfit (`suggest_outfit`).** Called with the selected item and the wardrobe. The tool itself decides between two paths based on whether the wardrobe has items — a real wardrobe-specific suggestion, or a generic fallback. Either way it returns `(is_fallback, text)`. The empty-wardrobe case is **not** treated as an error (anyone, with a wardrobe or not, can buy clothes!). The loop stores `text` and carries `is_fallback` forward so the next step can adjust its tone.
 
 **Step 3 - Create fit card (`create_fit_card`).** Called with the outfit text, the selected item, and `is_general=is_fallback`. Passing `is_fallback` through is a deliberate decision: it prevents the caption from hallucinating a wardrobe the user doesn't have. The result is stored in `session["fit_card"]`.
 
@@ -174,9 +174,9 @@ The loop sets `session["error"]` to that message and returns immediately. `sugge
 
 A few places where the implementation matched the plan, and a few where building it sharpened the spec:
 
-- **Went as planned: The single-`session`-dict state design** The plan called for one `session` dict threaded through the loop, with tools receiving explicit arguments rather than reading state themselves. That separation held up with no changes: the loop maps cleanly onto the planning.md diagram step for step, each tool stayed independently testable with hardcoded inputs, and adding the early-exit branch was a one-line `return session` because all output fields already lived in one place. This was the part of the spec I was least sure about up front and it needed zero rework.
+- **Went as planned: the single-`session`-dict state design.** The plan called for one `session` dict threaded through the loop, with tools receiving explicit arguments rather than reading state themselves. That separation held up with no changes: the loop maps cleanly onto the planning.md diagram step for step, each tool stayed independently testable with hardcoded inputs, and adding the early-exit branch was a one-line `return session` because all output fields already lived in one place. This was the part of the spec I was least sure about up front and it needed zero rework.
 
-- **Went differtnly as planned: Returning tuples instead of a single value was the right call.** Both `search_listings` (`(results, message)`) and `suggest_outfit` (`(is_fallback, text)`) return the main payload *plus* a second piece of context the loop needs to make a decision — the no-match message and the empty-wardrobe flag. Bundling that context into the return rather than having the loop re-derive it kept the branch logic trivial (`if not results: session["error"] = message`) and let the signal flow forward: `is_fallback` reaches `create_fit_card` so the caption doesn't hallucinate a wardrobe the user doesn't own. It also made the tools far easier to test — a unit test can assert on both elements of the tuple directly (e.g. that a no-match returns `[]` *and* a message naming the filters) without mocking the loop or the session.
+- **Diverged from the plan: the tools now return tuples instead of single values.** Originally the spec had each tool return just its main payload — `search_listings` returned a `list[dict]`, and `suggest_outfit` returned a plain styling `str`. While building it I found the loop needed a second piece of context at each branch that the bare return value couldn't carry: search needed to explain why a query produced nothing, and the fit card needed to know the suggestion was generic so it wouldn't claim the user owns pieces. So I changed both to return tuples — `(results, message)` and `(is_fallback, text)` - bundling that decision-context into the return rather than having the loop re-derive it. This kept the branch logic trivial (`if not results: session["error"] = message`), let `is_fallback` flow forward into `create_fit_card` so the caption doesn't hallucinate a wardrobe, and made the tools far easier to test.
 
 - **What I'd add next:** `search_listings` selects only `results[0]`. The richer behavior would be to surface the top few and let the user pick before styling — the session already stores the full `search_results` list, so the state model supports it without changes.
 
@@ -194,5 +194,5 @@ I used Claude to help implement parts of this project. Two specific instances:
 **2. Implementing the planning loop in `run_agent`.** I gave Claude the Architecture diagram and the Planning Loop + State Management sections from planning.md and asked it to fill in `run_agent()`. It produced the sequential structure correctly.
 
 **What I changed:** the draft called all three tools and only checked for an empty result at the very end, which defeats the point of the early exit (it still sent an empty item into the LLM tools). I rewrote it to branch immediately after `search_listings` and `return session` before any LLM call, matching the diagram's early-exit arrow. 
-I also had it stop returning a bare suggestion string from `suggest_outfit` and instead unpack the `(is_fallback, text)` tuple so the fallback flag could reach the fit card (and produce a more accurate respone (as described above))
+I also had it stop returning a bare suggestion string from `suggest_outfit` and instead unpack the `(is_fallback, text)` tuple so the fallback flag could reach the fit card (and produce a more accurate response, as described above).
 
