@@ -39,7 +39,9 @@ The planning loop unpacks the tuple, uses `results` to decide whether to proceed
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
+
 The tool itself builds the informative no-match message — naming the filters applied and what to adjust (it never raises an exception and never returns nothing — it returns `([], message)`). When `results` is empty, the planning loop copies that `message` into `session["error"]`, returns early, and does not call `suggest_outfit` or `create_fit_card`.
+
 ---
 
 ### Tool 2: suggest_outfit
