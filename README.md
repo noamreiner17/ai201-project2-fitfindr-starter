@@ -95,7 +95,7 @@ The loop lives in `run_agent()` in [agent.py](agent.py). It is **sequential with
 
 **Termination.** The loop is strictly forward-only. Each tool runs **at most once** per session - the loop never retries, never re-prompts, and never loops back to an earlier tool. It is "done" when it has either returned early with an error or populated all three output fields.
 
-This diagram shows the main flow; for the more detailed tool-level diagram (including each tool's internal error branches), see the diagram in [planning.md](planning.md).
+This diagram shows the main flow. For the more detailed tool-level diagram (including each tool's internal error branches), see the diagram in [planning.md](planning.md).
 
 ```
 User query
