@@ -1,6 +1,6 @@
 # FitFindr 🛍️
 
-FitFindr is an agentic assistant for secondhand shopping. You describe a piece you want in plain language ("vintage graphic tee under $30, size M"); the agent finds a matching listing, suggests an outfit built from your existing wardrobe, and writes a shareable social-media "fit card" to caption the find.
+FitFindr is an agentic assistant for secondhand shopping. You describe a piece you want in plain language ("vintage graphic tee under $30, size M") and the agent finds a matching listing, suggests an outfit built from your existing wardrobe, and writes a shareable social-media "fit card" to caption the find.
 
 The point of the project is the **planning loop**: the agent doesn't blindly run three tools in a row. It parses your query, decides whether each next step is worth taking based on what the previous step returned, and bails out early with a useful message when it can't help.
 
@@ -24,7 +24,7 @@ GROQ_API_KEY=your_key_here
 python app.py
 ```
 
-Then open the URL printed in your terminal. It is **usually** `http://localhost:7860`, but Gradio will pick a different port if 7860 is taken — read the terminal output rather than assuming the default.
+Then open the URL printed in your terminal. It is usually `http://localhost:7860`, but Gradio will pick a different port if 7860 is taken — read the terminal output rather than assuming the default.
 
 The UI has a query box, a wardrobe selector (example wardrobe vs. empty/new-user wardrobe), and three output panels: the top listing found, the outfit idea, and the fit card. A set of example queries (including one deliberate no-results query) is wired in under the box.
 
@@ -38,22 +38,19 @@ python agent.py      # runs a happy-path query and a no-results query
 
 ## Tool Inventory
 
-The agent has three tools, all in [tools.py](tools.py). Each is a standalone function that can be tested in isolation with hardcoded inputs.
+The agent has three tools, all in [tools.py](tools.py). Each is a standalone function that can be tested (and tested in  [test_tools.py](test_tools.py))in isolation with hardcoded inputs.
 
 ### 1. `search_listings`
 
-| | |
-|---|---|
 | **Purpose** | Find listings in the mock dataset that match the user's description, within an optional size and price ceiling, ranked by relevance. |
 | **Inputs** | `description: str` — keywords describing the wanted item.<br>`size: str \| None` — size filter (case-insensitive substring match against each listing's `size`); `None` skips size filtering.<br>`max_price: float \| None` — inclusive price ceiling; `None` skips price filtering. |
 | **Output** | `tuple[list[dict], str]` — `(results, message)`. `results` is the matching listing dicts (each with `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, `platform`), sorted by keyword-overlap score (desc) then price (asc). `message` is `""` on success, or an informative no-match message when `results` is `[]`. |
 
-It scores each listing by how many query keywords appear in the combined `title` + `description` + `style_tags` text, drops zero-score listings, and sorts by score then price. It **never raises** on a no-match — it returns `([], message)`.
+It scores each listing by how many query keywords appear in the combined `title` + `description` + `style_tags` text, drops zero-score listings, and sorts by score then price. It **never raises** on a no-match, instead it returns `([], message)`.
 
 ### 2. `suggest_outfit`
 
 | | |
-|---|---|
 | **Purpose** | Use an LLM to pair the selected thrifted item with pieces from the user's wardrobe (or give general styling advice if the wardrobe is empty). |
 | **Inputs** | `new_item: dict` — the selected listing dict.<br>`wardrobe: dict` — wardrobe with an `"items"` list (each item has `id`, `name`, `category`, `colors`, `style_tags`, `notes`). |
 | **Output** | `tuple[bool, str]` — `(is_fallback, text)`. `is_fallback` is `True` when the wardrobe was empty and `text` is generic advice; `False` when `text` references the user's actual pieces by name. `text` is always a non-empty styling string. |
